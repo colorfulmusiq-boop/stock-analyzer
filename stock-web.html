@@ -1,0 +1,563 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>미국 주식 AI 분석기</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Pretendard:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0a0f;
+    --surface: #111118;
+    --card: #16161f;
+    --border: #22222e;
+    --border2: #2e2e3e;
+    --text: #e8e8f0;
+    --muted: #6b6b85;
+    --accent: #7c6fff;
+    --accent2: #4fffb0;
+    --buy: #4fffb0;
+    --watch: #ffd166;
+    --sell: #ff6b6b;
+    --buy-bg: rgba(79,255,176,0.08);
+    --watch-bg: rgba(255,209,102,0.08);
+    --sell-bg: rgba(255,107,107,0.08);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Pretendard', sans-serif;
+    min-height: 100vh;
+    padding: 0;
+  }
+
+  /* 배경 노이즈 효과 */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.035'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .container { max-width: 860px; margin: 0 auto; padding: 2rem 1.5rem; position: relative; z-index: 1; }
+
+  /* 헤더 */
+  .header { margin-bottom: 2.5rem; }
+  .header-top { display: flex; align-items: center; gap: 12px; margin-bottom: 6px; }
+  .logo-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent2); box-shadow: 0 0 10px var(--accent2); animation: blink 2s ease-in-out infinite; }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
+  .header h1 { font-size: 24px; font-weight: 600; letter-spacing: -0.02em; }
+  .header p { font-size: 13px; color: var(--muted); }
+
+  /* 탭 */
+  .tabs { display: flex; gap: 2px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 3px; margin-bottom: 1.5rem; }
+  .tab { flex: 1; padding: 8px 12px; font-size: 13px; font-weight: 500; border: none; background: transparent; color: var(--muted); cursor: pointer; border-radius: 8px; transition: all 0.2s; }
+  .tab:hover { color: var(--text); }
+  .tab.active { background: var(--card); color: var(--text); box-shadow: 0 1px 3px rgba(0,0,0,0.4); }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+
+  /* 검색 */
+  .search-wrap { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 1.25rem; margin-bottom: 1rem; }
+  .search-row { display: flex; gap: 8px; margin-bottom: 10px; }
+  .ticker-input {
+    flex: 1; height: 46px; font-size: 18px; font-family: 'DM Mono', monospace; font-weight: 500;
+    padding: 0 16px; border: 1px solid var(--border2); border-radius: 8px;
+    background: var(--surface); color: var(--text); outline: none; letter-spacing: 0.05em;
+    transition: border-color 0.2s;
+  }
+  .ticker-input:focus { border-color: var(--accent); }
+  .ticker-input::placeholder { color: var(--muted); font-size: 14px; font-family: 'Pretendard', sans-serif; letter-spacing: 0; }
+  .search-btn {
+    height: 46px; padding: 0 22px; font-size: 14px; font-weight: 500;
+    border: 1px solid var(--accent); border-radius: 8px;
+    background: transparent; color: var(--accent); cursor: pointer; white-space: nowrap;
+    transition: all 0.2s;
+  }
+  .search-btn:hover { background: rgba(124,111,255,0.12); }
+  .search-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .quick-btns { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+  .quick-label { font-size: 11px; color: var(--muted); }
+  .quick-btn {
+    font-size: 12px; font-family: 'DM Mono', monospace; padding: 4px 10px;
+    border: 1px solid var(--border2); border-radius: 6px;
+    background: transparent; color: var(--muted); cursor: pointer; transition: all 0.2s;
+  }
+  .quick-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+  /* 결과 카드 */
+  .result-card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 1.5rem; }
+
+  .verdict-header { display: flex; align-items: center; gap: 10px; margin-bottom: 1.25rem; flex-wrap: wrap; }
+  .ticker-name { font-size: 22px; font-weight: 600; font-family: 'DM Mono', monospace; color: var(--text); }
+  .company-name { font-size: 13px; color: var(--muted); }
+  .verdict-pill {
+    font-size: 12px; font-weight: 600; padding: 4px 14px; border-radius: 99px; letter-spacing: 0.03em;
+  }
+  .v-buy { background: var(--buy-bg); color: var(--buy); border: 1px solid rgba(79,255,176,0.2); }
+  .v-watch { background: var(--watch-bg); color: var(--watch); border: 1px solid rgba(255,209,102,0.2); }
+  .v-sell { background: var(--sell-bg); color: var(--sell); border: 1px solid rgba(255,107,107,0.2); }
+  .conf-tag { margin-left: auto; font-size: 11px; color: var(--muted); }
+
+  /* 스코어 바 */
+  .score-section { margin-bottom: 1.25rem; }
+  .score-top { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+  .score-val { font-weight: 600; color: var(--text); }
+  .score-track { height: 4px; background: var(--border2); border-radius: 99px; overflow: hidden; }
+  .score-fill { height: 100%; border-radius: 99px; transition: width 1s cubic-bezier(.4,0,.2,1); }
+  .sf-buy { background: linear-gradient(90deg, #1eff9e, #4fffb0); }
+  .sf-watch { background: linear-gradient(90deg, #ffb800, #ffd166); }
+  .sf-sell { background: linear-gradient(90deg, #ff4040, #ff6b6b); }
+  .score-ends { display: flex; justify-content: space-between; font-size: 10px; color: var(--muted); margin-top: 4px; opacity: 0.6; }
+
+  /* 메트릭 그리드 */
+  .metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 1.25rem; }
+  .metric { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; }
+  .metric-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px; }
+  .metric-val { font-size: 15px; font-weight: 500; color: var(--text); }
+
+  /* 섹션 */
+  .section-title { font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; margin: 1.25rem 0 8px; }
+  .analysis-text { font-size: 14px; color: #c0c0d0; line-height: 1.75; }
+  .outlook-text { font-size: 14px; color: #c0c0d0; line-height: 1.75; }
+
+  .factor-list, .risk-list { display: flex; flex-direction: column; gap: 5px; }
+  .factor-item, .risk-item { display: flex; gap: 8px; align-items: flex-start; font-size: 13px; color: #c0c0d0; line-height: 1.5; }
+  .fi-icon { font-size: 12px; margin-top: 2px; flex-shrink: 0; }
+  .fi-ok { color: var(--buy); }
+  .fi-warn { color: var(--watch); }
+
+  .disclaimer {
+    font-size: 11px; color: var(--muted); line-height: 1.6;
+    padding-top: 1rem; border-top: 1px solid var(--border); margin-top: 1.25rem; opacity: 0.7;
+  }
+
+  /* 로딩 */
+  .loading { text-align: center; padding: 2.5rem 1rem; }
+  .loading-dots { display: flex; gap: 8px; justify-content: center; margin-bottom: 14px; }
+  .ldot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); animation: ld 1.4s ease-in-out infinite; }
+  .ldot:nth-child(2) { animation-delay: 0.2s; background: var(--accent2); }
+  .ldot:nth-child(3) { animation-delay: 0.4s; }
+  @keyframes ld { 0%,80%,100%{transform:scale(0.6);opacity:0.3} 40%{transform:scale(1);opacity:1} }
+  .loading-msg { font-size: 13px; color: var(--muted); }
+
+  .error-box { background: rgba(255,107,107,0.08); border: 1px solid rgba(255,107,107,0.2); border-radius: 10px; padding: 1rem 1.25rem; font-size: 13px; color: var(--sell); }
+
+  /* 트렌딩 탭 */
+  .trending-info { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 1.25rem; margin-bottom: 1rem; }
+  .trending-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem; }
+  .trending-title { font-size: 15px; font-weight: 600; }
+  .refresh-btn {
+    font-size: 12px; padding: 5px 14px; border: 1px solid var(--border2); border-radius: 6px;
+    background: transparent; color: var(--muted); cursor: pointer; transition: all 0.2s;
+  }
+  .refresh-btn:hover { border-color: var(--accent2); color: var(--accent2); }
+  .refresh-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .stock-list { display: flex; flex-direction: column; gap: 8px; }
+  .stock-row {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+    padding: 12px 16px; display: flex; align-items: flex-start; gap: 14px;
+    transition: border-color 0.2s;
+  }
+  .stock-row:hover { border-color: var(--border2); }
+  .stock-rank { font-size: 12px; font-family: 'DM Mono', monospace; color: var(--muted); min-width: 20px; padding-top: 2px; }
+  .stock-main { flex: 1; }
+  .stock-top { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; flex-wrap: wrap; }
+  .stock-ticker { font-size: 15px; font-weight: 600; font-family: 'DM Mono', monospace; color: var(--text); }
+  .stock-co { font-size: 12px; color: var(--muted); }
+  .stock-verdict { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 99px; }
+  .stock-reason { font-size: 13px; color: #a0a0b8; line-height: 1.6; }
+  .stock-score { text-align: right; }
+  .score-num { font-size: 16px; font-weight: 600; font-family: 'DM Mono', monospace; }
+  .score-buy { color: var(--buy); }
+  .score-watch { color: var(--watch); }
+  .score-sell { color: var(--sell); }
+  .score-lbl { font-size: 10px; color: var(--muted); }
+
+  /* 추천 탭 */
+  .reco-card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 1.25rem; margin-bottom: 1rem; }
+  .reco-header-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem; }
+  .reco-title { font-size: 15px; font-weight: 600; }
+  .reco-list { display: flex; flex-direction: column; gap: 10px; }
+  .reco-item {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px;
+  }
+  .reco-top { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; flex-wrap: wrap; }
+  .reco-ticker { font-size: 16px; font-weight: 600; font-family: 'DM Mono', monospace; }
+  .reco-company { font-size: 12px; color: var(--muted); }
+  .reco-theme { font-size: 11px; padding: 2px 8px; border-radius: 99px; background: rgba(124,111,255,0.1); color: var(--accent); border: 1px solid rgba(124,111,255,0.2); }
+  .reco-why { font-size: 13px; color: #a0a0b8; line-height: 1.65; margin-bottom: 6px; }
+  .reco-horizon { font-size: 11px; color: var(--muted); }
+
+  .gen-btn {
+    width: 100%; height: 46px; font-size: 14px; font-weight: 500;
+    border: 1px solid var(--accent2); border-radius: 8px;
+    background: transparent; color: var(--accent2); cursor: pointer; transition: all 0.2s;
+  }
+  .gen-btn:hover { background: rgba(79,255,176,0.08); }
+  .gen-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* 공통 빈 상태 */
+  .empty-state { text-align: center; padding: 3rem 1rem; color: var(--muted); font-size: 14px; }
+  .empty-icon { font-size: 32px; margin-bottom: 10px; opacity: 0.4; }
+
+  @media (max-width: 480px) {
+    .metrics { grid-template-columns: repeat(2, 1fr); }
+    .tabs { overflow-x: auto; }
+    .tab { font-size: 12px; white-space: nowrap; }
+  }
+
+  .api-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.85); z-index: 9999; display: flex; align-items: center; justify-content: center; }
+  .api-box { background: #16161f; border: 1px solid #2e2e3e; border-radius: 16px; padding: 2rem; width: 420px; max-width: 90vw; }
+  .api-box h3 { font-size: 18px; font-weight: 600; margin-bottom: 8px; color: #e8e8f0; }
+  .api-box p { font-size: 13px; color: #6b6b85; margin-bottom: 1.25rem; line-height: 1.6; }
+  .api-input { width: 100%; height: 44px; font-size: 13px; font-family: 'DM Mono', monospace; padding: 0 14px; border: 1px solid #2e2e3e; border-radius: 8px; background: #0a0a0f; color: #e8e8f0; outline: none; margin-bottom: 10px; box-sizing: border-box; }
+  .api-input:focus { border-color: #7c6fff; }
+  .api-save-btn { width: 100%; height: 44px; font-size: 14px; font-weight: 500; border: 1px solid #4fffb0; border-radius: 8px; background: transparent; color: #4fffb0; cursor: pointer; }
+  .api-save-btn:hover { background: rgba(79,255,176,0.08); }
+</style>
+</head>
+<body>
+
+<div id="apiOverlay" class="api-overlay" style="display:none;">
+  <div class="api-box">
+    <h3>🔑 API 키 입력</h3>
+    <p>Anthropic API 키를 입력해. 한 번 저장하면 다음부터 자동으로 불러와.</p>
+    <input id="apiKeyInput" class="api-input" type="password" placeholder="sk-ant-api03-..." />
+    <button class="api-save-btn" onclick="saveApiKey()">저장하고 시작하기</button>
+  </div>
+</div>
+
+<div class="container">
+
+  <div class="header">
+    <div class="header-top">
+      <div class="logo-dot"></div>
+      <h1>미국 주식 AI 분석기</h1>
+    </div>
+    <p>Claude AI · 뉴스 감성 + 기술 지표 + 트렌드 분석 · 개인 참고용</p>
+  </div>
+
+  <div class="tabs">
+    <button class="tab active" onclick="switchTab('analyze')">🔍 종목 분석</button>
+    <button class="tab" onclick="switchTab('trending')">🔥 상승 중인 주식</button>
+    <button class="tab" onclick="switchTab('reco')">⭐ AI 추천</button>
+  </div>
+
+  <!-- 종목 분석 탭 -->
+  <div id="tab-analyze" class="tab-panel active">
+    <div class="search-wrap">
+      <div class="search-row">
+        <input id="tickerInput" class="ticker-input" type="text" placeholder="티커 입력 (예: NVDA, AAPL)" maxlength="6" autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false" />
+        <button id="searchBtn" class="search-btn" onclick="analyzeStock()">분석하기</button>
+      </div>
+      <div class="quick-btns">
+        <span class="quick-label">빠른 선택:</span>
+        <button class="quick-btn" onclick="setTicker('NVDA')">NVDA</button>
+        <button class="quick-btn" onclick="setTicker('AAPL')">AAPL</button>
+        <button class="quick-btn" onclick="setTicker('TSLA')">TSLA</button>
+        <button class="quick-btn" onclick="setTicker('MSFT')">MSFT</button>
+        <button class="quick-btn" onclick="setTicker('AMZN')">AMZN</button>
+        <button class="quick-btn" onclick="setTicker('META')">META</button>
+        <button class="quick-btn" onclick="setTicker('GOOGL')">GOOGL</button>
+        <button class="quick-btn" onclick="setTicker('AMD')">AMD</button>
+      </div>
+    </div>
+    <div id="analyzeResult">
+      <div class="empty-state">
+        <div class="empty-icon">📊</div>
+        티커를 입력하고 분석하기를 눌러봐
+      </div>
+    </div>
+  </div>
+
+  <!-- 상승 중인 주식 탭 -->
+  <div id="tab-trending" class="tab-panel">
+    <div class="trending-info">
+      <div class="trending-header">
+        <span class="trending-title">🔥 지금 상승 중인 미국 주식</span>
+        <button id="trendRefreshBtn" class="refresh-btn" onclick="loadTrending()">새로고침</button>
+      </div>
+      <div id="trendingResult">
+        <div class="empty-state">
+          <div class="empty-icon">📈</div>
+          새로고침을 눌러서 현재 상승 중인 주식을 불러와
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- AI 추천 탭 -->
+  <div id="tab-reco" class="tab-panel">
+    <div class="reco-card">
+      <div class="reco-header-row">
+        <span class="reco-title">⭐ AI가 추천하는 미국 주식</span>
+      </div>
+      <p style="font-size:13px;color:var(--muted);margin-bottom:1rem;line-height:1.6;">현재 시장 상황과 트렌드를 분석해서 주목할 만한 종목을 추천해줄게. 단기/중기 관점으로 나눠서 이유도 설명함.</p>
+      <button id="recoBtn" class="gen-btn" onclick="loadReco()">AI 추천 받기 ↗</button>
+      <div id="recoResult" style="margin-top:1rem;"></div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const ANTHROPIC_API = 'https://api.anthropic.com/v1/messages';
+const MODEL = 'claude-sonnet-4-20250514';
+
+function switchTab(name) {
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  event.target.classList.add('active');
+}
+
+function setTicker(t) {
+  document.getElementById('tickerInput').value = t;
+}
+
+document.getElementById('tickerInput').addEventListener('keydown', function(e) {
+  if (e.key === 'Enter') analyzeStock();
+});
+
+function showLoading(containerId, msg) {
+  document.getElementById(containerId).innerHTML = `
+    <div class="loading">
+      <div class="loading-dots"><div class="ldot"></div><div class="ldot"></div><div class="ldot"></div></div>
+      <div class="loading-msg" id="lmsg-${containerId}">${msg}</div>
+    </div>`;
+}
+
+function rotateMsgs(containerId, msgs) {
+  let i = 0;
+  return setInterval
+  var _apiKey = localStorage.getItem('stock_api_key') || '';
+  function getApiKey() { return _apiKey; }
+  function showApiOverlay() {
+    var ov = document.getElementById('apiOverlay');
+    if (ov) ov.style.display = 'flex';
+  }
+  function saveApiKey() {
+    var val = document.getElementById('apiKeyInput').value.trim();
+    if (!val.startsWith('sk-ant-')) { alert('올바른 API 키를 입력해줘 (sk-ant-로 시작)'); return; }
+    _apiKey = val;
+    localStorage.setItem('stock_api_key', val);
+    document.getElementById('apiOverlay').style.display = 'none';
+  }
+  if (!_apiKey) { window.addEventListener('DOMContentLoaded', function() { showApiOverlay(); }); }
+
+  (function() {
+    i = (i + 1) % msgs.length;
+    const el = document.getElementById('lmsg-' + containerId);
+    if (el) el.textContent = msgs[i];
+  }, 2000);
+}
+
+async function callAI(systemPrompt, userMsg) {
+  const res = await fetch(ANTHROPIC_API, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-api-key': getApiKey(), 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
+    body: JSON.stringify({
+      model: MODEL,
+      max_tokens: 1000,
+      tools: [{ type: 'web_search_20250305', name: 'web_search' }],
+      system: systemPrompt,
+      messages: [{ role: 'user', content: userMsg }]
+    })
+  });
+  const data = await res.json();
+  if (data.error) throw new Error(data.error.message);
+  const tb = data.content.find(b => b.type === 'text');
+  if (!tb) throw new Error('응답 없음');
+  return JSON.parse(tb.text.trim().replace(/```json|```/g, '').trim());
+}
+
+// ─── 종목 분석 ───────────────────────────────
+async function analyzeStock() {
+  const ticker = document.getElementById('tickerInput').value.trim().toUpperCase();
+  if (!ticker) return;
+
+  const btn = document.getElementById('searchBtn');
+  btn.disabled = true; btn.textContent = '분석 중...';
+
+  showLoading('analyzeResult', 'AI가 ' + ticker + ' 분석 중...');
+  const iv = rotateMsgs('analyzeResult', [
+    'AI가 ' + ticker + ' 분석 중...',
+    '최신 뉴스 수집 중...',
+    '기술적 지표 계산 중...',
+    '투자 의견 생성 중...'
+  ]);
+
+  const sys = `You are a US stock analysis AI. Respond ONLY with valid JSON, no markdown.
+JSON: {"ticker":"","companyName":"","verdict":"매수|관망|매도","score":0,"scoreLabel":"","currentSentiment":"긍정적|중립|부정적","technicalSignal":"매수|중립|매도","shortTermOutlook":"","keyFactors":["","",""],"risks":["",""],"analysisDetail":"","confidence":"높음|중간|낮음"}
+score: 0-100. All text in Korean. Be specific and direct.`;
+
+  try {
+    const j = await callAI(sys, `Search latest news for ${ticker} and analyze: verdict, score, key factors, risks, outlook. Ticker: ${ticker}`);
+    clearInterval(iv);
+    renderAnalysis(j);
+  } catch(e) {
+    clearInterval(iv);
+    document.getElementById('analyzeResult').innerHTML = `<div class="error-box">⚠️ 분석 실패: ${e.message}</div>`;
+  }
+  btn.disabled = false; btn.textContent = '분석하기';
+}
+
+function renderAnalysis(j) {
+  const sc = Math.min(100, Math.max(0, j.score || 50));
+  const vc = j.verdict === '매수' ? 'buy' : j.verdict === '매도' ? 'sell' : 'watch';
+  const kf = (j.keyFactors||[]).map(f => `<div class="factor-item"><span class="fi-icon fi-ok">✓</span><span>${f}</span></div>`).join('');
+  const rk = (j.risks||[]).map(r => `<div class="risk-item"><span class="fi-icon fi-warn">△</span><span>${r}</span></div>`).join('');
+
+  document.getElementById('analyzeResult').innerHTML = `
+    <div class="result-card">
+      <div class="verdict-header">
+        <span class="ticker-name">${j.ticker||''}</span>
+        <span class="company-name">${j.companyName||''}</span>
+        <span class="verdict-pill v-${vc}">${j.verdict||''}</span>
+        <span class="conf-tag">신뢰도: ${j.confidence||'중간'}</span>
+      </div>
+      <div class="score-section">
+        <div class="score-top"><span>AI 투자 점수</span><span class="score-val">${sc}점 · ${j.scoreLabel||''}</span></div>
+        <div class="score-track"><div class="score-fill sf-${vc}" id="sfill" style="width:0%"></div></div>
+        <div class="score-ends"><span>강력 매도 0</span><span>중립 50</span><span>강력 매수 100</span></div>
+      </div>
+      <div class="metrics">
+        <div class="metric"><div class="metric-label">뉴스 감성</div><div class="metric-val">${j.currentSentiment||'-'}</div></div>
+        <div class="metric"><div class="metric-label">기술 신호</div><div class="metric-val">${j.technicalSignal||'-'}</div></div>
+        <div class="metric"><div class="metric-label">신뢰도</div><div class="metric-val">${j.confidence||'-'}</div></div>
+      </div>
+      <div class="section-title">상세 분석</div>
+      <div class="analysis-text">${j.analysisDetail||''}</div>
+      ${j.shortTermOutlook ? `<div class="section-title">단기 전망</div><div class="outlook-text">${j.shortTermOutlook}</div>` : ''}
+      ${kf ? `<div class="section-title">핵심 요인</div><div class="factor-list">${kf}</div>` : ''}
+      ${rk ? `<div class="section-title">주요 리스크</div><div class="risk-list">${rk}</div>` : ''}
+      <div class="disclaimer">⚠️ AI 참고용 분석입니다. 실제 투자 손실에 대한 책임은 본인에게 있으며 전문가 상담을 권장합니다.</div>
+    </div>`;
+  setTimeout(() => { const el = document.getElementById('sfill'); if (el) el.style.width = sc + '%'; }, 100);
+}
+
+// ─── 상승 중인 주식 ───────────────────────────
+async function loadTrending() {
+  const btn = document.getElementById('trendRefreshBtn');
+  btn.disabled = true; btn.textContent = '로딩 중...';
+
+  showLoading('trendingResult', '상승 중인 주식 검색 중...');
+  const iv = rotateMsgs('trendingResult', [
+    '최신 상승 주식 검색 중...',
+    '상승 이유 분석 중...',
+    '데이터 정리 중...'
+  ]);
+
+  const sys = `You are a US stock market analyst. Search for currently rising US stocks and respond ONLY with valid JSON, no markdown.
+JSON: {"updatedAt":"현재 날짜","stocks":[{"rank":1,"ticker":"","companyName":"","verdict":"매수|관망","score":0,"riseReason":"왜 오르고 있는지 2-3문장 구체적 설명","catalyst":"핵심 촉매제 한 줄","sector":"섹터명"}]}
+Include 6-8 stocks. All text in Korean. Be specific about WHY each stock is rising (earnings beat, product launch, macro trend, etc).`;
+
+  try {
+    const j = await callAI(sys, 'Search for US stocks that are currently rising or gaining momentum today/this week. Find specific companies with strong upward momentum and explain WHY they are rising. Include company names and tickers.');
+    clearInterval(iv);
+    renderTrending(j);
+  } catch(e) {
+    clearInterval(iv);
+    document.getElementById('trendingResult').innerHTML = `<div class="error-box">⚠️ 로딩 실패: ${e.message}</div>`;
+  }
+  btn.disabled = false; btn.textContent = '새로고침';
+}
+
+function renderTrending(j) {
+  if (!j.stocks || !j.stocks.length) {
+    document.getElementById('trendingResult').innerHTML = `<div class="error-box">데이터를 불러오지 못했어</div>`;
+    return;
+  }
+  const vc = v => v === '매수' ? 'buy' : 'watch';
+  const sc = v => v === '매수' ? 'score-buy' : 'score-watch';
+
+  const rows = j.stocks.map(s => `
+    <div class="stock-row">
+      <span class="stock-rank">#${s.rank}</span>
+      <div class="stock-main">
+        <div class="stock-top">
+          <span class="stock-ticker">${s.ticker}</span>
+          <span class="stock-co">${s.companyName}</span>
+          <span class="verdict-pill v-${vc(s.verdict)}" style="font-size:11px;padding:2px 8px;">${s.verdict}</span>
+          ${s.sector ? `<span style="font-size:11px;color:var(--muted);">${s.sector}</span>` : ''}
+        </div>
+        ${s.catalyst ? `<div style="font-size:11px;color:var(--accent);margin-bottom:4px;font-weight:500;">📌 ${s.catalyst}</div>` : ''}
+        <div class="stock-reason">${s.riseReason}</div>
+      </div>
+      <div class="stock-score">
+        <div class="score-num ${sc(s.verdict)}">${s.score}</div>
+        <div class="score-lbl">점</div>
+      </div>
+    </div>`).join('');
+
+  document.getElementById('trendingResult').innerHTML = `
+    <div style="font-size:11px;color:var(--muted);margin-bottom:10px;">기준: ${j.updatedAt||'최신'}</div>
+    <div class="stock-list">${rows}</div>
+    <div class="disclaimer" style="margin-top:1rem;">⚠️ AI 분석 기반 참고 정보입니다. 실제 투자 결정은 본인 책임입니다.</div>`;
+}
+
+// ─── AI 추천 ──────────────────────────────────
+async function loadReco() {
+  const btn = document.getElementById('recoBtn');
+  btn.disabled = true; btn.textContent = '추천 생성 중...';
+
+  document.getElementById('recoResult').innerHTML = `
+    <div class="loading">
+      <div class="loading-dots"><div class="ldot"></div><div class="ldot"></div><div class="ldot"></div></div>
+      <div class="loading-msg" id="lmsg-recoResult">시장 트렌드 분석 중...</div>
+    </div>`;
+  const iv = rotateMsgs('recoResult', [
+    '시장 트렌드 분석 중...',
+    '유망 섹터 탐색 중...',
+    '종목 선별 중...',
+    '투자 근거 정리 중...'
+  ]);
+
+  const sys = `You are a US stock investment advisor. Search current market trends and recommend stocks. Respond ONLY with valid JSON, no markdown.
+JSON: {"summary":"현재 시장 한 줄 요약","shortTerm":[{"ticker":"","companyName":"","theme":"","whyNow":"왜 지금 주목해야 하는지 2-3문장","horizon":"1-4주","riskLevel":"낮음|중간|높음"}],"midTerm":[{"ticker":"","companyName":"","theme":"","whyNow":"2-3문장","horizon":"1-6개월","riskLevel":"낮음|중간|높음"}]}
+shortTerm: 3 stocks, midTerm: 3 stocks. All text in Korean. Be specific with real company names.`;
+
+  try {
+    const j = await callAI(sys, 'Search current US market trends, hot sectors, and upcoming catalysts. Recommend specific US stocks for short-term (1-4 weeks) and mid-term (1-6 months) investment with detailed reasoning why each stock is worth watching now.');
+    clearInterval(iv);
+    renderReco(j);
+  } catch(e) {
+    clearInterval(iv);
+    document.getElementById('recoResult').innerHTML = `<div class="error-box">⚠️ 추천 생성 실패: ${e.message}</div>`;
+  }
+  btn.disabled = false; btn.textContent = 'AI 추천 다시 받기 ↗';
+}
+
+function renderReco(j) {
+  const rlColor = r => r === '낮음' ? 'var(--buy)' : r === '높음' ? 'var(--sell)' : 'var(--watch)';
+
+  const mkItems = arr => (arr||[]).map(s => `
+    <div class="reco-item">
+      <div class="reco-top">
+        <span class="reco-ticker">${s.ticker}</span>
+        <span class="reco-company">${s.companyName}</span>
+        ${s.theme ? `<span class="reco-theme">${s.theme}</span>` : ''}
+      </div>
+      <div class="reco-why">${s.whyNow}</div>
+      <div class="reco-horizon">
+        투자 기간: ${s.horizon} &nbsp;·&nbsp;
+        리스크: <span style="color:${rlColor(s.riskLevel)}">${s.riskLevel}</span>
+      </div>
+    </div>`).join('');
+
+  document.getElementById('recoResult').innerHTML = `
+    ${j.summary ? `<div style="font-size:13px;color:var(--muted);padding:10px 0 14px;border-bottom:1px solid var(--border);margin-bottom:14px;">📊 ${j.summary}</div>` : ''}
+    <div class="section-title">단기 추천 (1-4주)</div>
+    <div class="reco-list">${mkItems(j.shortTerm)}</div>
+    <div class="section-title" style="margin-top:1.25rem;">중기 추천 (1-6개월)</div>
+    <div class="reco-list">${mkItems(j.midTerm)}</div>
+    <div class="disclaimer" style="margin-top:1.25rem;">⚠️ AI 분석 기반 참고 정보입니다. 실제 투자 결정은 본인 책임이며 전문가 상담을 권장합니다.</div>`;
+}
+</script>
+</body>
+</html>
